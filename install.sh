@@ -178,7 +178,7 @@ elif [[ -f /etc/redhat-release ]]; then
 		export os_ver=$(cat /etc/redhat-release|head -1|awk {'print $6'}|cut -d "." -f 1)
 	elif [[ "$os" = "CentOS" ]]; then
 		export os="CentOS"
-		export os_ver=$(cat /etc/redhat-release|head -1|awk {'print $4'})
+		export os_ver=$(cat /etc/redhat-release|head -1|awk {'print $4'}|cut -d "." -f 1)
 	else
 		export os=$(cat /etc/redhat-release|head -1|awk {'print $1'})
 		export os_ver=$(cat /etc/redhat-release|head -1|awk {'print $3'}|cut -d "." -f 1)
@@ -294,8 +294,20 @@ function OSInstall()
 	elif [[ "$os" = "CentOS" ]] || [[ "$os" = "Fedora" ]] || [[ "$os" = "Red Hat" ]] || [[ "$os" = "Red Hat Enterprise" ]]; then
 		httpd_exists=$(rpm -qa | grep "httpd")
 		php_exists=$(rpm -qa | grep "php")
-		mysqld_exists=$(rpm -qa | grep "mysql-server")
+		mariadb_exists=$(rpm -qa | grep "mariadb-server")
 		rsync_exists=$(rpm -qa | grep "rsync")
+		epel_installed=$(yum repolist|grep "epel")
+		if [[ "$epel_installed" = "" ]]; then
+ 			echo -e "\e[31mNotice\e[0m: EPEL repo does not seem to be installed."
+ 			unset wait
+ 			echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+ 			echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing EPEL..."
+ 			while true;
+ 			do echo -n .;sleep 1;done &
+ 			yum install -y epel-release >/dev/null 2>&1
+			kill $!; trap 'kill $!' SIGTERM;
+			echo -e "\n\n\e[32mNotice\e[0m: EPEL Installation Complete\n"
+ 		fi
  		if [[ "$rsync_exists" = "" ]]; then
  			echo -e "\e[31mNotice\e[0m: Rsync does not seem to be installed."
  			unset wait
@@ -309,85 +321,82 @@ function OSInstall()
  		fi
 		if [[ "$httpd_exists" = "" ]]; then
 			echo -e "\e[31mNotice\e[0m: Apache does not seem to be installed."
-                        unset wait
-                        echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
-                        echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing Apache..."
+			unset wait
+			echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+			echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing Apache..."
 			if [[ "$os_ver" = "5" ]]; then
 				while true;
-                        	do echo -n .;sleep 1;done &
+				do echo -n .;sleep 1;done &
 				yum install --disablerepo=webtatic -y httpd httpd-devel httpd-tools curl > /dev/null 2>&1
-                        	kill $!; trap 'kill $!' SIGTERM;
+				kill $!; trap 'kill $!' SIGTERM;
 			else
 				while true;
-                                do echo -n .;sleep 1;done &
-                                yum install -y httpd httpd-devel httpd-tools curl > /dev/null 2>&1
-                                kill $!; trap 'kill $!' SIGTERM;
+				do echo -n .;sleep 1;done &
+				yum install -y httpd httpd-devel httpd-tools curl > /dev/null 2>&1
+				kill $!; trap 'kill $!' SIGTERM;
 			fi
-                        echo -e "\n\e[32mNotice\e[0m: Apache Installation Complete\n"
+            echo -e "\n\e[32mNotice\e[0m: Apache Installation Complete\n"
 			echo -e "\e[32mChecking httpd start up config\n\e[0m"
-                        if [[ -z $(chkconfig --list httpd|grep "2:on\|3:on\|5:on") ]]; then
-                                # enable httpd at startup 235
-                                echo -e "\e[32mChkConfig\e[0m: httpd status = \e[31mdisabled\e[0m"
-                                chkconfig --level 235 httpd on
-				echo -e "\e[32mChkConfig\e[0m: httpd enabled\n"
-                        else
-                                echo -e "\e[32mChkConfig\e[0m: httpd status = enabled\n"
-                        fi
+			if [[ -z $(systemctl is-enabled httpd|grep "disabled") ]]; then
+				echo -e "\e[32msystemctl\e[0m: httpd status = \e[31mdisabled\e[0m"
+				systemctl enable httpd
+			echo -e "\e[32msystemctl\e[0m: httpd enabled\n"
+			else
+				echo -e "\e[32msystemctl\e[0m: httpd status = enabled\n"
+			fi
 		fi
 		if [[ "$php_exists" = "" ]]; then
-                        echo -e "\e[31mNotice\e[0m: PHP does not seem to be installed."
-                        unset wait
-                        echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
-                        echo -e "\e[31mNotice\e[0m: Installing PHP5..."
-                        while true;
-                        do echo -n .;sleep 1;done &
-                        yum install -y php php-mysql php-common php-gd php-mbstring php-mcrypt php-devel php-xml php-cli php-pdo php-mssql > /dev/null 2>&1
-                        kill $!; trap 'kill $!' SIGTERM;
-                        echo -e "\n\n\e[32mNotice\e[0m: PHP Installation Complete\n"
-                fi
-		if [[ "$mysqld_exists" = "" ]]; then
-                        echo -e "\e[31mNotice\e[0m: MySQL does not seem to be installed."
-                        unset wait
-                        echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
-                        mysqlPasswd
-			echo -e "\n\n\e[32m\e[4mMySQL Database Install and Setup\n\e[0m"
-                        if [[ "$mysql_passwd" != "$mysql_passwd_again" ]]; then
-                                echo -e "\e[31mNotice\e[0m: Passwords do not match, please try again.\n"
-                                mysqlPasswd
-                        fi
-                        echo -e "\e[31mNotice\e[0m: Installing MySQL Client and Server..."
-                        while true;
-                        do echo -n .;sleep 1;done &
-                        yum install -y mysql mysql-server mysql-devel > /dev/null 2>&1
-                        kill $!; trap 'kill $!' SIGTERM;
-			service mysqld restart > /dev/null 2>&1
-                        mysql_install_db > /dev/null 2>&1
-                        echo -e "\nInstalling MySQL system tables...\nOK"
-                        echo -e "Filling help tables...\nOK"
-                        echo -e "\n\e[36mNotice\e[0m: You may run /usr/bin/mysql_secure_installation to secure the MySQL installation once this application setup has been completed."
-                        echo -e "\n\e[32mNotice\e[0m: MySQL Installation Complete\n"
-			echo -e "\e[32mChecking mysqld start up config\n\e[0m"
-                	if [[ -z $(chkconfig --list mysqld|grep "2:on\|3:on\|5:on") ]]; then
-                        	# enable mysqld at startup 235
-                        	echo -e "\e[32mChkConfig\e[0m: mysqld status = \e[31mdisabled\e[0m"
-                        	chkconfig --level 235 mysqld on
-				echo -e "\e[32mChkConfig\e[0m: mysqld enabled\n"
-                	else
-                        	echo -e "\e[32mChkConfig\e[0m: mysqld status = enabled\n"
-                	fi
-                fi
+			echo -e "\e[31mNotice\e[0m: PHP does not seem to be installed."
+			unset wait
+			echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+			echo -e "\e[31mNotice\e[0m: Installing PHP5..."
+			while true;
+			do echo -n .;sleep 1;done &
+			yum install -y php php-mysql php-common php-gd php-mbstring php-mcrypt php-devel php-xml php-cli php-pdo php-mssql > /dev/null 2>&1
+			kill $!; trap 'kill $!' SIGTERM;
+			echo -e "\n\n\e[32mNotice\e[0m: PHP Installation Complete\n"
+		fi
+		if [[ "$mariadb_exists" = "" ]]; then
+			echo -e "\e[31mNotice\e[0m: MariaDB does not seem to be installed."
+			unset wait
+			echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+			mysqlPasswd
+			echo -e "\n\n\e[32m\e[4mMariaDB Database Install and Setup\n\e[0m"
+			if [[ "$mysql_passwd" != "$mysql_passwd_again" ]]; then
+				echo -e "\e[31mNotice\e[0m: Passwords do not match, please try again.\n"
+				mysqlPasswd
+			fi			
+			echo -e "\e[31mNotice\e[0m: Installing MariaDB Client and Server..."
+			while true;
+			do echo -n .;sleep 1;done &
+			yum install -y mariadb mariadb-server mariadb-devel > /dev/null 2>&1
+			kill $!; trap 'kill $!' SIGTERM;
+			systemctl restart mariadb > /dev/null 2>&1
+			echo -e "\n\e[36mNotice\e[0m: You may run /usr/bin/mysql_secure_installation to secure the MariaDB installation once this application setup has been completed."
+			echo -e "\n\e[32mNotice\e[0m: MariaDB Installation Complete\n"
+			echo -e "\e[32mChecking mariadb start up config\n\e[0m"
+			if [[ -z $(systemctl is-enabled mariadb|grep "disabled") ]]; then
+				echo -e "\e[32msystemctl\e[0m: mariadb status = \e[31mdisabled\e[0m"
+				systemctl enable mariadb
+			echo -e "\e[32msystemctl\e[0m: mariadb enabled\n"
+			else
+				echo -e "\e[32msystemctl\e[0m: mariadb status = enabled\n"
+			fi
+        fi
+		
 		web_dir="/var/www/patch_manager/"
 		web_user="apache"
 		web_service="httpd"
+		
 		echo -e "\e[32mChecking if services are started\n\e[0m"
-                if [[ -n $(service mysqld status|grep "stopped") ]]; then
-                        # enable mysqld
-                        echo -e "\e[32mService\e[0m: mysqld status = \e[31mstopped\n\e[0m"
-			service mysqld restart
+		if [[ -n $(systemctl status mariadb|grep "dead") ]]; then
+			# enable mariadb
+			echo -e "\e[32mService\e[0m: mariadb status = \e[31mstopped\n\e[0m"
+			systemctl start mariadb
 			echo
-                else
-                        echo -e "\e[32mService\e[0m: mysqld status = started\n"
-                fi
+		else
+			echo -e "\e[32mService\e[0m: mariadb status = started\n"
+		fi
 		# set initial mysql root password
 		mysqlRootPwd
 		# sanity checks
