@@ -297,6 +297,7 @@ function OSInstall()
 		mariadb_exists=$(rpm -qa | grep "mariadb-server")
 		rsync_exists=$(rpm -qa | grep "rsync")
 		epel_installed=$(yum repolist|grep "epel")
+		cronie_exists=$(yum repolist|grep "cronie")
 		if [[ "$epel_installed" = "" ]]; then
  			echo -e "\e[31mNotice\e[0m: EPEL repo does not seem to be installed."
  			unset wait
@@ -307,6 +308,19 @@ function OSInstall()
  			yum install -y epel-release >/dev/null 2>&1
 			kill $!; trap 'kill $!' SIGTERM;
 			echo -e "\n\n\e[32mNotice\e[0m: EPEL Installation Complete\n"
+ 		fi
+		if [[ "$cronie_exists" = "" ]]; then
+ 			echo -e "\e[31mNotice\e[0m: Cron does not seem to be installed."
+ 			unset wait
+ 			echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+ 			echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing Cron..."
+ 			while true;
+ 			do echo -n .;sleep 1;done &
+ 			yum install -y cronie >/dev/null 2>&1
+			kill $!; trap 'kill $!' SIGTERM;
+			systemctl enable crond
+			systemctl start crond
+			echo -e "\n\n\e[32mNotice\e[0m: Cron Installation Complete\n"
  		fi
  		if [[ "$rsync_exists" = "" ]]; then
  			echo -e "\e[31mNotice\e[0m: Rsync does not seem to be installed."
