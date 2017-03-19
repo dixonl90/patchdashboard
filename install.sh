@@ -1097,17 +1097,16 @@ function WebUIInfo()
         done
 	echo
 
-        # Web-UI admin password
+	# Web-UI admin password
 	unset new_web_admin_passwd
-        read -s -p "Web Admin Password [Default: $web_admin_passwd]: " new_web_admin_passwd
+    read -s -p "Web Admin Password [Default: $web_admin_passwd]: " new_web_admin_passwd
 	if [[ "$new_web_admin_passwd" != "" ]]; then
-		export $new_web_admin_passwd
 		WebUIAPWConfirm
 	fi
-        while [[ "$new_web_admin_passwd" = "" ]]; do
-                echo -e "\n\e[32mNotice\e[0m: Default Password used: $web_admin_passwd"
-                new_web_admin_passwd=$web_admin_passwd
-        done
+	while [[ "$new_web_admin_passwd" = "" ]]; do
+			echo -e "\n\e[32mNotice\e[0m: Default Password used: $web_admin_passwd"
+			new_web_admin_passwd=$web_admin_passwd
+	done	
 	echo
 
         # Web-UI standard username
@@ -1122,17 +1121,16 @@ function WebUIInfo()
         done
 	echo
 
-        # Web-UI standard password
+    # Web-UI standard password
 	unset new_web_duser_passwd
-        read -s -p "Web User Password [Default: $web_duser_passwd]: " new_web_duser_passwd
+	read -s -p "Web User Password [Default: $web_duser_passwd]: " new_web_duser_passwd
 	if [[ "$new_web_duser_passwd" != "" ]]; then
-                export $new_web_duser_passwd
                 WebUIUPWConfirm
-        fi
-        while [[ "$new_web_duser_passwd" = "" ]]; do
-                echo -e "\n\e[32mNotice\e[0m: Default Web User Password used: $web_duser_passwd"
-                new_web_duser_passwd=$web_duser_passwd
-        done
+	fi
+	while [[ "$new_web_duser_passwd" = "" ]]; do
+			echo -e "\n\e[32mNotice\e[0m: Default Web User Password used: $web_duser_passwd"
+			new_web_duser_passwd=$web_duser_passwd
+	done
 	echo
 }
 
