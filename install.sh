@@ -195,231 +195,270 @@ elif [[ "$os" = "CentOS" ]] || [[ "$os" = "Fedora" ]] || [[ "$os" = "Red Hat" ]]
         export doc_root=$(grep -s DocumentRoot /etc/httpd/conf/*|grep -v "#"|head -n 1|awk -F\" {'print $2'})
 fi
 
+# Enable a service using the correct command for sys-v or systemd
+function enableService() {
+    if [[ `systemctl` =~ -\.mount ]]; then
+        systemctl enable $1
+    elif [[ -f /etc/init.d/cron && ! -h /etc/init.d/cron ]]; then 
+        echo update-rc.d $1 enable
+    else 
+        echo "Error: Unsure on the correct command to enable $1 service!"; 
+        exit 0;
+    fi
+}
+
+# Enable a service using the correct command for sys-v or systemd
+function startService() {
+    if [[ `systemctl` =~ -\.mount ]]; then
+        systemctl start $1
+    elif [[ -f /etc/init.d/cron && ! -h /etc/init.d/cron ]]; then 
+        echo service $1 start
+    else 
+        echo "Error: Unsure on the correct command to start $1 service!";
+        exit 0;
+    fi
+}
+
 ## begin main functions of installer
 function OSInstall()
 {
-	echo -e "Running install for: \e[32m$os $os_ver\e[0m\n"
+    echo -e "Running install for: \e[32m$os $os_ver\e[0m\n"
 
-	if [[ "$os" = "Ubuntu" ]] || [[ "$os" = "Debian" ]] || [[ "$os" = "Linux" ]]; then
-		apache_exists=$(which apache2)
-		php5_exists=$(which php)
-		mysqld_exists=$(which mysqld)
-		rsync_exists=$(which rsync)
-		if [[ "$os" = "Linux" ]] && [[ "$apache_exists" = "" ]]; then
-			echo -e "\n\e[31mNotice\e[0m: Please install the full LAMP stack before trying to install this application.\n\n\e[31mNotice\e[0m: https://community.rackspace.com/products/f/25/t/49\n"
-                        exit 0
-		fi
-		if [[ "$rsync_exists" = "" ]]; then
- 			echo -e "\e[31mNotice\e[0m: Rsync does not seem to be installed."
- 			unset wait
- 			echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
- 			echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing Rsync..."
- 			while true;
- 			do echo -n .;sleep 1;done &
- 			apt-get install -y rsync >/dev/null 2>&1
-			kill $!; trap 'kill $!' SIGTERM;
-			echo -e "\n\n\e[32mNotice\e[0m: Rsync Installation Complete\n"
- 		fi
-		if [[ "$apache_exists" = "" ]]; then
-			echo -e "\e[31mNotice\e[0m: Apache/PHP does not seem to be installed."
-			unset wait
-			echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
-			echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing Apache and PHP5..."
-			while true;
-			do echo -n .;sleep 1;done &
-			apt-get install -y apache2 apache2-threaded-dev apache2-utils curl > /dev/null 2>&1
-			kill $!; trap 'kill $!' SIGTERM;
-			echo "ServerName localhost" >> /etc/apache2/httpd.conf
-			echo -e "\n\e[32mNotice\e[0m: Apache/PHP Installation Complete\n"
-		fi
-		if [[ "$php5_exists" = "" ]]; then
-                        echo -e "\e[31mNotice\e[0m: PHP does not seem to be installed."
-                        unset wait
-                        echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
-                        echo -e "\e[31mNotice\e[0m: Installing PHP5..."
-                        while true;
-                        do echo -n .;sleep 1;done &
-                        apt-get install -y php5 libapache2-mod-php5 php5-mcrypt php5-common php5-gd php5-cgi php5-cli php5-fpm php5-dev php5-xmlrpc php5-mysql php5-sybase > /dev/null 2>&1
-                        kill $!; trap 'kill $!' SIGTERM;
-                        echo -e "\n\n\e[32mNotice\e[0m: PHP Installation Complete\n"
-                fi
-		if [[ "$mysqld_exists" = "" ]]; then
-			echo -e "\e[31mNotice\e[0m: MySQL does not seem to be installed."
-                        unset wait
-			echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
-			mysqlPasswd
-			if [[ "$mysql_passwd" != "$mysql_passwd_again" ]]; then
-				echo -e "\n\n\e[31mNotice\e[0m: Passwords do not match, please try again.\n"
-				mysqlPasswd
-			fi
-			debconf-set-selections <<< "mysql-server mysql-server/root_password password $mysql_passwd"
-			debconf-set-selections <<< "mysql-server mysql-server/root_password_again password $mysql_passwd_again"
-			echo -e "\n\n\e[31mNotice\e[0m: Installing MySQL Client and Server..."
-			while true;
-                        do echo -n .;sleep 1;done &
-			apt-get install -y mysql-client mysql-server php5-mysql php5-sybase libapache2-mod-auth-mysql libmysqlclient-dev > /dev/null 2>&1
-			kill $!; trap 'kill $!' SIGTERM;
-			mysql_install_db > /dev/null 2>&1
-			echo -e "\nInstalling MySQL system tables...\nOK"
-			echo -e "Filling help tables...\nOK"
-			echo -e "\n\e[36mNotice\e[0m: You may run /usr/bin/mysql_secure_installation to secure the MySQL installation once this application setup has been completed."
-			echo -e "\n\e[32mNotice\e[0m: MySQL Installation Complete\n"
-		fi
-		web_dir="/var/www/patch_manager/"
-		web_user="www-data"
-		web_service="apache2"
-		echo -e "\e[32mChecking apache2 rewrite module\n\e[0m"
-		if [[ -z $(apache2ctl -M|grep rewrite) ]]; then
-			# enable rewrite modules
-			echo -e "\n\e[32mApache Module\e[0m: rewrite status = \e[31mdisabled\e[0m"
-			a2enmod rewrite > /dev/null 2>&1
-			echo -e "\n\e[32mApache Module\e[0m: rewrite enabled\n"
-		else
-			echo -e "\n\e[32mApache Module\e[0m: rewrite status = enabled\n"
-		fi
-		echo -e "\e[32mChecking if services are started\n\e[0m"
-                if [[ -n $(service mysql status|grep "stop/waiting") ]]; then
-                        # enable mysqld
-                        echo -e "\e[32mService\e[0m: mysql status = \e[31mstop/waiting\n\e[0m"
-                        service mysql start
-                        echo
-                else
-                        echo -e "\e[32mService\e[0m: mysql status = started\n"
-                fi
-		# sanity checks
-		phpverCheck
-		PackageCheck
-		checkIPtables
-
-	elif [[ "$os" = "CentOS" ]] || [[ "$os" = "Fedora" ]] || [[ "$os" = "Red Hat" ]] || [[ "$os" = "Red Hat Enterprise" ]]; then
-		httpd_exists=$(rpm -qa | grep "httpd")
-		php_exists=$(rpm -qa | grep "php")
-		mariadb_exists=$(rpm -qa | grep "mariadb-server")
-		rsync_exists=$(rpm -qa | grep "rsync")
-		epel_installed=$(yum repolist|grep "epel")
-		cronie_exists=$(yum repolist|grep "cronie")
-		if [[ "$epel_installed" = "" ]]; then
- 			echo -e "\e[31mNotice\e[0m: EPEL repo does not seem to be installed."
- 			unset wait
- 			echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
- 			echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing EPEL..."
- 			while true;
- 			do echo -n .;sleep 1;done &
- 			yum install -y epel-release >/dev/null 2>&1
-			kill $!; trap 'kill $!' SIGTERM;
-			echo -e "\n\n\e[32mNotice\e[0m: EPEL Installation Complete\n"
- 		fi
-		if [[ "$cronie_exists" = "" ]]; then
- 			echo -e "\e[31mNotice\e[0m: Cron does not seem to be installed."
- 			unset wait
- 			echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
- 			echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing Cron..."
- 			while true;
- 			do echo -n .;sleep 1;done &
- 			yum install -y cronie >/dev/null 2>&1
-			kill $!; trap 'kill $!' SIGTERM;
-			systemctl enable crond
-			systemctl start crond
-			echo -e "\n\n\e[32mNotice\e[0m: Cron Installation Complete\n"
- 		fi
- 		if [[ "$rsync_exists" = "" ]]; then
- 			echo -e "\e[31mNotice\e[0m: Rsync does not seem to be installed."
- 			unset wait
- 			echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
- 			echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing Rsync..."
- 			while true;
- 			do echo -n .;sleep 1;done &
- 			yum install -y rsync >/dev/null 2>&1
-			kill $!; trap 'kill $!' SIGTERM;
-			echo -e "\n\n\e[32mNotice\e[0m: Rsync Installation Complete\n"
- 		fi
-		if [[ "$httpd_exists" = "" ]]; then
-			echo -e "\e[31mNotice\e[0m: Apache does not seem to be installed."
-			unset wait
-			echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
-			echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing Apache..."
-			if [[ "$os_ver" = "5" ]]; then
-				while true;
-				do echo -n .;sleep 1;done &
-				yum install --disablerepo=webtatic -y httpd httpd-devel httpd-tools curl > /dev/null 2>&1
-				kill $!; trap 'kill $!' SIGTERM;
-			else
-				while true;
-				do echo -n .;sleep 1;done &
-				yum install -y httpd httpd-devel httpd-tools curl > /dev/null 2>&1
-				kill $!; trap 'kill $!' SIGTERM;
-			fi
-            echo -e "\n\e[32mNotice\e[0m: Apache Installation Complete\n"
-			echo -e "\e[32mChecking httpd start up config\n\e[0m"
-			if [[ -z $(systemctl is-enabled httpd|grep "disabled") ]]; then
-				echo -e "\e[32msystemctl\e[0m: httpd status = \e[31mdisabled\e[0m"
-				systemctl enable httpd
-			echo -e "\e[32msystemctl\e[0m: httpd enabled\n"
-			else
-				echo -e "\e[32msystemctl\e[0m: httpd status = enabled\n"
-			fi
-		fi
-		if [[ "$php_exists" = "" ]]; then
-			echo -e "\e[31mNotice\e[0m: PHP does not seem to be installed."
-			unset wait
-			echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
-			echo -e "\e[31mNotice\e[0m: Installing PHP5..."
-			while true;
-			do echo -n .;sleep 1;done &
-			yum install -y php php-mysql php-common php-gd php-mbstring php-mcrypt php-devel php-xml php-cli php-pdo php-mssql > /dev/null 2>&1
-			kill $!; trap 'kill $!' SIGTERM;
-			echo -e "\n\n\e[32mNotice\e[0m: PHP Installation Complete\n"
-		fi
-		if [[ "$mariadb_exists" = "" ]]; then
-			echo -e "\e[31mNotice\e[0m: MariaDB does not seem to be installed."
-			unset wait
-			echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
-			mysqlPasswd
-			echo -e "\n\n\e[32m\e[4mMariaDB Database Install and Setup\n\e[0m"
-			if [[ "$mysql_passwd" != "$mysql_passwd_again" ]]; then
-				echo -e "\e[31mNotice\e[0m: Passwords do not match, please try again.\n"
-				mysqlPasswd
-			fi			
-			echo -e "\e[31mNotice\e[0m: Installing MariaDB Client and Server..."
-			while true;
-			do echo -n .;sleep 1;done &
-			yum install -y mariadb mariadb-server mariadb-devel > /dev/null 2>&1
-			kill $!; trap 'kill $!' SIGTERM;
-			systemctl restart mariadb > /dev/null 2>&1
-			echo -e "\n\e[36mNotice\e[0m: You may run /usr/bin/mysql_secure_installation to secure the MariaDB installation once this application setup has been completed."
-			echo -e "\n\e[32mNotice\e[0m: MariaDB Installation Complete\n"
-			echo -e "\e[32mChecking mariadb start up config\n\e[0m"
-			if [[ -z $(systemctl is-enabled mariadb|grep "disabled") ]]; then
-				echo -e "\e[32msystemctl\e[0m: mariadb status = \e[31mdisabled\e[0m"
-				systemctl enable mariadb
-			echo -e "\e[32msystemctl\e[0m: mariadb enabled\n"
-			else
-				echo -e "\e[32msystemctl\e[0m: mariadb status = enabled\n"
-			fi
+    if [[ "$os" = "Ubuntu" ]] || [[ "$os" = "Debian" ]] || [[ "$os" = "Linux" ]]; then
+        apache_exists=$(which apache2)
+        php5_exists=$(which php)
+        mysqld_exists=$(which mysqld)
+        rsync_exists=$(which rsync)
+        if [[ "$os" = "Linux" ]] && [[ "$apache_exists" = "" ]]; then
+            echo -e "\n\e[31mNotice\e[0m: Please install the full LAMP stack before trying to install this application.\n\n\e[31mNotice\e[0m: https://community.rackspace.com/products/f/25/t/49\n"
+            exit 0
         fi
+        if [[ "$rsync_exists" = "" ]]; then
+            echo -e "\e[31mNotice\e[0m: Rsync does not seem to be installed."
+            unset wait
+            echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+            echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing Rsync..."
+            while true;
+            do echo -n .;sleep 1;done &
+            apt-get install -y rsync >/dev/null 2>&1
+            kill $!; trap 'kill $!' SIGTERM;
+            echo -e "\n\n\e[32mNotice\e[0m: Rsync Installation Complete\n"
+        fi
+        if [[ "$apache_exists" = "" ]]; then
+            echo -e "\e[31mNotice\e[0m: Apache/PHP does not seem to be installed."
+            unset wait
+            echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+            echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing Apache and PHP5..."
+            while true;
+            do echo -n .;sleep 1;done &
+            apt-get install -y apache2 apache2-threaded-dev apache2-utils curl > /dev/null 2>&1
+            kill $!; trap 'kill $!' SIGTERM;
+            echo "ServerName localhost" >> /etc/apache2/httpd.conf
+            echo -e "\n\e[32mNotice\e[0m: Apache/PHP Installation Complete\n"
+        fi
+        if [[ "$php5_exists" = "" ]]; then
+            echo -e "\e[31mNotice\e[0m: PHP does not seem to be installed."
+            unset wait
+            echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+            echo -e "\e[31mNotice\e[0m: Installing PHP5..."
+            while true;
+            do echo -n .;sleep 1;done &
+            apt-get install -y php5 libapache2-mod-php5 php5-mcrypt php5-common php5-gd php5-cgi php5-cli php5-fpm php5-dev php5-xmlrpc php5-mysql php5-sybase > /dev/null 2>&1
+            kill $!; trap 'kill $!' SIGTERM;
+            echo -e "\n\n\e[32mNotice\e[0m: PHP Installation Complete\n"
+        fi
+        if [[ "$mysqld_exists" = "" ]]; then
+            echo -e "\e[31mNotice\e[0m: MySQL does not seem to be installed."
+            unset wait
+            echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+            mysqlPasswd
+            if [[ "$mysql_passwd" != "$mysql_passwd_again" ]]; then
+                echo -e "\n\n\e[31mNotice\e[0m: Passwords do not match, please try again.\n"
+                mysqlPasswd
+            fi
+            debconf-set-selections <<< "mysql-server mysql-server/root_password password $mysql_passwd"
+            debconf-set-selections <<< "mysql-server mysql-server/root_password_again password $mysql_passwd_again"
+            echo -e "\n\n\e[31mNotice\e[0m: Installing MySQL Client and Server..."
+            while true;
+            do echo -n .;sleep 1;done &
+            apt-get install -y mysql-client mysql-server php5-mysql php5-sybase libapache2-mod-auth-mysql libmysqlclient-dev > /dev/null 2>&1
+            kill $!; trap 'kill $!' SIGTERM;
+            mysql_install_db > /dev/null 2>&1
+            echo -e "\nInstalling MySQL system tables...\nOK"
+            echo -e "Filling help tables...\nOK"
+            echo -e "\n\e[36mNotice\e[0m: You may run /usr/bin/mysql_secure_installation to secure the MySQL installation once this application setup has been completed."
+            echo -e "\n\e[32mNotice\e[0m: MySQL Installation Complete\n"
+        fi
+
+        web_dir="/var/www/patch_manager/"
+        web_user="www-data"
+        web_service="apache2"
+
+        echo -e "\e[32mChecking apache2 rewrite module\n\e[0m"
+        if [[ -z $(apache2ctl -M|grep rewrite) ]]; then
+            # enable rewrite modules
+            echo -e "\n\e[32mApache Module\e[0m: rewrite status = \e[31mdisabled\e[0m"
+            a2enmod rewrite > /dev/null 2>&1
+            echo -e "\n\e[32mApache Module\e[0m: rewrite enabled\n"
+        else
+            echo -e "\n\e[32mApache Module\e[0m: rewrite status = enabled\n"
+        fi
+        echo -e "\e[32mChecking if services are started\n\e[0m"
+        if [[ -n $(service mysql status|grep "stop/waiting") ]]; then
+            # enable mysqld
+            echo -e "\e[32mService\e[0m: mysql status = \e[31mstop/waiting\n\e[0m"
+            service mysql start
+            echo
+        else
+            echo -e "\e[32mService\e[0m: mysql status = started\n"
+        fi
+
+        # sanity checks
+        phpverCheck
+        PackageCheck
+        checkIPtables
+
+    elif [[ "$os" = "CentOS" ]] || [[ "$os" = "Fedora" ]] || [[ "$os" = "Red Hat" ]] || [[ "$os" = "Red Hat Enterprise" ]]; then
+        httpd_exists=$(rpm -qa | grep "httpd")
+        php_exists=$(rpm -qa | grep "php")
+        mariadb_exists=$(rpm -qa | grep "mariadb-server")
+        rsync_exists=$(rpm -qa | grep "rsync")
+        epel_installed=$(yum repolist|grep "epel")
+        cronie_exists=$(yum repolist|grep "cronie")
+
+        if [[ "$epel_installed" = "" ]]; then
+            echo -e "\e[31mNotice\e[0m: EPEL repo does not seem to be installed."
+            unset wait
+            echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+            echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing EPEL..."
+            while true;
+            do echo -n .;sleep 1;done &
+            yum install -y epel-release >/dev/null 2>&1
+            kill $!; trap 'kill $!' SIGTERM;
+            echo -e "\n\n\e[32mNotice\e[0m: EPEL Installation Complete\n"
+        fi
+
+        if [[ "$cronie_exists" = "" ]]; then
+            echo -e "\e[31mNotice\e[0m: Cron does not seem to be installed."
+            unset wait
+            echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+            echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing Cron..."
+            while true;
+            do echo -n .;sleep 1;done &
+            yum install -y cronie >/dev/null 2>&1
+            kill $!; trap 'kill $!' SIGTERM;
+            enableService crond
+            systemctl start crond
+            echo -e "\n\n\e[32mNotice\e[0m: Cron Installation Complete\n"
+        fi
+
+        if [[ "$rsync_exists" = "" ]]; then
+            echo -e "\e[31mNotice\e[0m: Rsync does not seem to be installed."
+            unset wait
+            echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+            echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing Rsync..."
+            while true;
+            do echo -n .;sleep 1;done &
+            yum install -y rsync >/dev/null 2>&1
+            kill $!; trap 'kill $!' SIGTERM;
+            echo -e "\n\n\e[32mNotice\e[0m: Rsync Installation Complete\n"
+        fi
+
+        if [[ "$httpd_exists" = "" ]]; then
+            echo -e "\e[31mNotice\e[0m: Apache does not seem to be installed."
+            unset wait
+            echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+            echo -e "\e[31mNotice\e[0m: Please wait while prerequisites are installed...\n\n\e[31mNotice\e[0m: Installing Apache..."
+            if [[ "$os_ver" = "5" ]]; then
+                while true;
+                do echo -n .;sleep 1;done &
+                yum install --disablerepo=webtatic -y httpd httpd-devel httpd-tools curl > /dev/null 2>&1
+                kill $!; trap 'kill $!' SIGTERM;
+            else
+                while true;
+                do echo -n .;sleep 1;done &
+                yum install -y httpd httpd-devel httpd-tools curl > /dev/null 2>&1
+                kill $!; trap 'kill $!' SIGTERM;
+            fi
+            echo -e "\n\e[32mNotice\e[0m: Apache Installation Complete\n"
+            echo -e "\e[32mChecking httpd start up config\n\e[0m"
+            if [[ -z $(systemctl is-enabled httpd|grep "disabled") ]]; then
+                echo -e "\e[32msystemctl\e[0m: httpd status = \e[31mdisabled\e[0m"
+                enableService httpd
+            echo -e "\e[32msystemctl\e[0m: httpd enabled\n"
+            else
+                    echo -e "\e[32msystemctl\e[0m: httpd status = enabled\n"
+            fi
+        fi
+
+        if [[ "$php_exists" = "" ]]; then
+            echo -e "\e[31mNotice\e[0m: PHP does not seem to be installed."
+            unset wait
+            echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+            echo -e "\e[31mNotice\e[0m: Installing PHP5..."
+            while true;
+            do echo -n .;sleep 1;done &
+            yum install -y php php-mysql php-common php-gd php-mbstring php-mcrypt php-devel php-xml php-cli php-pdo php-mssql > /dev/null 2>&1
+            kill $!; trap 'kill $!' SIGTERM;
+            echo -e "\n\n\e[32mNotice\e[0m: PHP Installation Complete\n"
+        fi
+
+        if [[ "$mariadb_exists" = "" ]]; then
+            echo -e "\e[31mNotice\e[0m: MariaDB does not seem to be installed."
+            unset wait
+            echo -e "\e[32m";read -p "Press enter to continue install" wait;echo -e "\e[0m"
+            mysqlPasswd
+            echo -e "\n\n\e[32m\e[4mMariaDB Database Install and Setup\n\e[0m"
+
+            if [[ "$mysql_passwd" != "$mysql_passwd_again" ]]; then
+                echo -e "\e[31mNotice\e[0m: Passwords do not match, please try again.\n"
+                mysqlPasswd
+            fi	
 		
-		web_dir="/var/www/patch_manager/"
-		web_user="apache"
-		web_service="httpd"
-		
-		echo -e "\e[32mChecking if services are started\n\e[0m"
-		if [[ -n $(systemctl status mariadb|grep "dead") ]]; then
-			# enable mariadb
-			echo -e "\e[32mService\e[0m: mariadb status = \e[31mstopped\n\e[0m"
-			systemctl start mariadb
-			echo
-		else
-			echo -e "\e[32mService\e[0m: mariadb status = started\n"
-		fi
-		# set initial mysql root password
-		mysqlRootPwd
-		# sanity checks
-		phpverCheck
-		PackageCheck
-		checkIPtables
-		localhostChk
-	fi
+            echo -e "\e[31mNotice\e[0m: Installing MariaDB Client and Server..."
+            while true;
+            do echo -n .;sleep 1;done &
+            yum install -y mariadb mariadb-server mariadb-devel > /dev/null 2>&1
+            kill $!; trap 'kill $!' SIGTERM;
+            systemctl restart mariadb > /dev/null 2>&1
+            echo -e "\n\e[36mNotice\e[0m: You may run /usr/bin/mysql_secure_installation to secure the MariaDB installation once this application setup has been completed."
+            echo -e "\n\e[32mNotice\e[0m: MariaDB Installation Complete\n"
+            echo -e "\e[32mChecking mariadb start up config\n\e[0m"
+
+            if [[ -z $(systemctl is-enabled mariadb|grep "disabled") ]]; then
+                echo -e "\e[32msystemctl\e[0m: mariadb status = \e[31mdisabled\e[0m"
+                enableService mariadb
+            echo -e "\e[32msystemctl\e[0m: mariadb enabled\n"
+            else
+                echo -e "\e[32msystemctl\e[0m: mariadb status = enabled\n"
+            fi
+        fi
+
+            web_dir="/var/www/patch_manager/"
+            web_user="apache"
+            web_service="httpd"
+
+            echo -e "\e[32mChecking if services are started\n\e[0m"
+            if [[ -n $(systemctl status mariadb|grep "dead") ]]; then
+                    # enable mariadb
+                    echo -e "\e[32mService\e[0m: mariadb status = \e[31mstopped\n\e[0m"
+                    systemctl start mariadb
+                    echo
+            else
+                    echo -e "\e[32mService\e[0m: mariadb status = started\n"
+            fi
+
+            # set initial mysql root password
+            mysqlRootPwd
+
+            # sanity checks
+            phpverCheck
+            PackageCheck
+            checkIPtables
+            localhostChk
+    fi
 }
+
 function PackageCheck()
 {
 	echo -e "\e[32mChecking for dependencies and missing packages\n\e[0m"
