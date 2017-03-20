@@ -176,7 +176,7 @@ elif [[ -f /etc/redhat-release ]]; then
 	elif [[ "$os" = "Red" ]]; then
 		export os="Red Hat"
 		export os_ver=$(cat /etc/redhat-release|head -1|awk {'print $6'}|cut -d "." -f 1)
-	elif [[ "$os" = "CentOS" ]]; then
+	elif [[ $(grep -i "CentOS" /etc/redhat-release) != "" ]]; then
 		export os="CentOS"
 		export os_ver=$(cat /etc/redhat-release|head -1|awk {'print $4'}|cut -d "." -f 1)
 	else
