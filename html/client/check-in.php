@@ -32,8 +32,8 @@ if (isset($client_key) && !empty($client_key)) {
             mysql_query($sql2);
         }
         $out = "allowed='FALSE'
-key_to_check='FALSE'
-check_patches='FALSE'";
+        key_to_check='FALSE'
+        check_patches='FALSE'";
     } else {
         $time_sql = "SELECT * FROM `servers` WHERE `last_checked` < NOW() - INTERVAL 2 HOUR AND `client_key`='$client_key' LIMIT 1;";
         $time_res = mysql_query($time_sql);
@@ -48,13 +48,13 @@ check_patches='FALSE'";
         #echo $sql2;
         mysql_query($sql2);
         $out = "allowed='TRUE'
-key_to_check='$key_to_check'
-check_patches='$CHECK_PATCHES'";
+        key_to_check='$key_to_check'
+        check_patches='$CHECK_PATCHES'";
     }
 } else {
     $out = "allowed='FALSE'
-key_to_check='FALSE'
-check_patches='FALSE'";
+    key_to_check='FALSE'
+    check_patches='FALSE'";
 }
 echo $out;
 mysql_close($link);
