@@ -323,8 +323,8 @@ function OSInstall()
         php_exists=$(rpm -qa | grep "php")
         mariadb_exists=$(rpm -qa | grep "mariadb-server")
         rsync_exists=$(rpm -qa | grep "rsync")
-        epel_installed=$(yum repolist|grep "epel")
-        cronie_exists=$(yum repolist|grep "cronie")
+        epel_installed=$(yum repolist | grep "epel")
+        cronie_exists=$(rpm -qa | grep "cronie")
 
         if [[ "$epel_installed" = "" ]]; then
             echo -e "\e[31mNotice\e[0m: EPEL repo does not seem to be installed."
@@ -461,67 +461,68 @@ function OSInstall()
 
 function PackageCheck()
 {
-	echo -e "\e[32mChecking for dependencies and missing packages\n\e[0m"
-        if [[ "$os" = "Ubuntu" ]] || [[ "$os" = "Debian" ]] || [[ "$os" = "Linux" ]]; then
-	pkgList="apache2 apache2-threaded-dev apache2-utils php5 libapache2-mod-php5 php5-mcrypt php5-common php5-gd php5-cgi php5-cli php5-fpm php5-dev php5-xmlrpc mysql-client mysql-server php5-mysql php5-sybase libapache2-mod-auth-mysql libmysqlclient-dev curl rsync"
-	echo -e "\e[31mWARNING\e[0m: Please keep in mind this is not a fool proof process, if you have 3rd party repo's, the automated package installer may fail.\n"
-	for package in $pkgList; do
-                dpkg-query -l $package > /dev/null 2>&1
-                if [[ "$?" = "1" ]]; then
-                        echo -e "\e[32mPackage\e[0m: \e[36m$package\e[0m not installed, installing missing package"
-                        while true;
-                        do echo -n .;sleep 1;done &
-                        apt-get install -y $package > /dev/null 2>&1
-                        kill $!; trap 'kill $!' SIGTERM;
-                        echo -e "\n\e[32mPackage\e[0m: \e[36m$package\e[0m install complete\n"
-                fi
+    echo -e "\e[32mChecking for dependencies and missing packages\n\e[0m"
+    if [[ "$os" = "Ubuntu" ]] || [[ "$os" = "Debian" ]] || [[ "$os" = "Linux" ]]; then
+        pkgList="apache2 apache2-threaded-dev apache2-utils php5 libapache2-mod-php5 php5-mcrypt php5-common php5-gd php5-cgi php5-cli php5-fpm php5-dev php5-xmlrpc mysql-client mysql-server php5-mysql php5-sybase libapache2-mod-auth-mysql libmysqlclient-dev curl rsync"
+        echo -e "\e[31mWARNING\e[0m: Please keep in mind this is not a fool proof process, if you have 3rd party repo's, the automated package installer may fail.\n"
+        for package in $pkgList; do
+            dpkg-query -l $package > /dev/null 2>&1
+            if [[ "$?" = "1" ]]; then
+                echo -e "\e[32mPackage\e[0m: \e[36m$package\e[0m not installed, installing missing package"
+                while true;
+                do echo -n .;sleep 1;done &
+                apt-get install -y $package > /dev/null 2>&1
+                kill $!; trap 'kill $!' SIGTERM;
+                echo -e "\n\e[32mPackage\e[0m: \e[36m$package\e[0m install complete\n"
+            fi
         done
-	elif [[ "$os" = "CentOS" ]] || [[ "$os" = "Fedora" ]] || [[ "$os" = "Red Hat" ]] || [[ "$os" = "Red Hat Enterprise" ]]; then
-		ls /etc/yum/pluginconf.d/fastestmirror.conf > /dev/null 2>&1
-		if [[ "$?" = 0 ]]; then
-			if [[ $(grep "exclude=.at" /etc/yum/pluginconf.d/fastestmirror.conf) = "" ]]; then 
-				echo "exclude=.at" >> /etc/yum/pluginconf.d/fastestmirror.conf
-			fi
-		fi
-	# check for extra repos
-	extraRepo=$(ls /etc/yum.repos.d/|grep 'remi\|webtatic')
-	if [[ "$?" = 0 ]]; then
-		if [[ $(yum list installed|grep -i "56") != "" ]]; then
-			pVer="56"
-		elif [[ $(yum list installed|grep -i "55") != "" ]]; then
-			pVer="55"
-		elif [[ $(yum list installed|grep -i "54") != "" ]]; then
-			pVer="54"
-		else
-			pVer=""
-		fi
-		pkgList="php php${pVer}-php-mysqlnd php${pVer}-php-common php${pVer}-php-gd php${pVer}-php-mbstring php${pVer}-php-mcrypt php${pVer}-php-devel php${pVer}-php-xml php${pVer}-php-cli php${pVer}-php-pdo php${pVer}-php-mssql mysql mysql-server mysql-devel httpd httpd-devel httpd-tools curl rsync"
-	else
+    elif [[ "$os" = "CentOS" ]] || [[ "$os" = "Fedora" ]] || [[ "$os" = "Red Hat" ]] || [[ "$os" = "Red Hat Enterprise" ]]; then
+        ls /etc/yum/pluginconf.d/fastestmirror.conf > /dev/null 2>&1
+        if [[ "$?" = 0 ]]; then
+            if [[ $(grep "exclude=.at" /etc/yum/pluginconf.d/fastestmirror.conf) = "" ]]; then 
+                echo "exclude=.at" >> /etc/yum/pluginconf.d/fastestmirror.conf
+            fi
+        fi
 
-		pkgList="php php-mysql php-common php-gd php-mbstring php-mcrypt php-devel php-xml php-cli php-pdo php-mssql mysql mysql-server mysql-devel httpd httpd-devel httpd-tools curl rsync"
-	fi
-	for package in $pkgList; do
-		if [[ $(yum list installed|grep "$package[.]") = "" ]]; then
-			repoName=$(echo $extraRepo|cut -d'.' -f 1|sed -e 's/ /,/g')
-			echo -e "\e[32mPackage\e[0m: \e[36m$package\e[0m not installed, installing missing package"
-			echo -e "\e[31mWARNING\e[0m: Detected 3rd party repos> $repoName - Please keep in mind this is not a fool proof process... but we try :)\n"
-                	if [[ $? = 0 ]]; then
-                        	echo -e "\n\e[32m3rd Party Repos Exist\e[0m: $repoName, attempting to enable the specific repos before installing dependancies.\n"
-				while true;
-	                        do echo -n .;sleep 1;done &
-				yum install -y --enablerepo=$repoName $package > /dev/null 2>&1
-	                        kill $!; trap 'kill $!' SIGTERM;
-        	                echo -e "\n\e[32mPackage\e[0m: \e[36m$package\e[0m install complete\n"
-			else
-				while true;
-		        	do echo -n .;sleep 1;done &
-				yum install -y --skip-broken $package > /dev/null 2>&1
-				kill $!; trap 'kill $!' SIGTERM;
-				echo -e "\n\e[32mPackage\e[0m: \e[36m$package\e[0m install complete\n"
-			fi
-		fi
-	done
-	fi
+        # check for extra repos
+        extraRepo=$(ls /etc/yum.repos.d/|grep 'remi\|webtatic')
+        if [[ "$?" = 0 ]]; then
+            if [[ $(yum list installed|grep -i "56") != "" ]]; then
+                pVer="56"
+            elif [[ $(yum list installed|grep -i "55") != "" ]]; then
+                pVer="55"
+            elif [[ $(yum list installed|grep -i "54") != "" ]]; then
+                pVer="54"
+            else
+                pVer=""
+            fi
+            pkgList="php php${pVer}-php-mysqlnd php${pVer}-php-common php${pVer}-php-gd php${pVer}-php-mbstring php${pVer}-php-mcrypt php${pVer}-php-devel php${pVer}-php-xml php${pVer}-php-cli php${pVer}-php-pdo php${pVer}-php-mssql mariadb mariadb-server mariadb-devel httpd httpd-devel httpd-tools curl rsync"
+        else
+            pkgList="php php-mysql php-common php-gd php-mbstring php-mcrypt php-devel php-xml php-cli php-pdo php-mssql mariadb mariadb-server mariadb-devel httpd httpd-devel httpd-tools curl rsync"
+        fi
+
+        for package in $pkgList; do
+            if [[ $(yum list installed|grep "$package[.]") = "" ]]; then
+                repoName=$(echo $extraRepo|cut -d'.' -f 1|sed -e 's/ /,/g')
+                echo -e "\e[32mPackage\e[0m: \e[36m$package\e[0m not installed, installing missing package"
+                echo -e "\e[31mWARNING\e[0m: Detected 3rd party repos> $repoName - Please keep in mind this is not a fool proof process... but we try :)\n"
+                if [[ $? = 0 ]]; then
+                    echo -e "\n\e[32m3rd Party Repos Exist\e[0m: $repoName, attempting to enable the specific repos before installing dependancies.\n"
+                    while true;
+                    do echo -n .;sleep 1;done &
+                    yum install -y --enablerepo=$repoName $package > /dev/null 2>&1
+                    kill $!; trap 'kill $!' SIGTERM;
+                    echo -e "\n\e[32mPackage\e[0m: \e[36m$package\e[0m install complete\n"
+                else
+                    while true;
+                    do echo -n .;sleep 1;done &
+                    yum install -y --skip-broken $package > /dev/null 2>&1
+                    kill $!; trap 'kill $!' SIGTERM;
+                    echo -e "\n\e[32mPackage\e[0m: \e[36m$package\e[0m install complete\n"
+                fi
+            fi
+        done
+    fi
 }
 
 function EnableSSL()
