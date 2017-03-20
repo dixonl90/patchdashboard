@@ -496,9 +496,9 @@ function PackageCheck()
             else
                 pVer=""
             fi
-            pkgList="php php${pVer}-php-mysqlnd php${pVer}-php-common php${pVer}-php-gd php${pVer}-php-mbstring php${pVer}-php-mcrypt php${pVer}-php-devel php${pVer}-php-xml php${pVer}-php-cli php${pVer}-php-pdo php${pVer}-php-mssql mariadb mariadb-server mariadb-devel httpd httpd-devel httpd-tools curl rsync"
+            pkgList="php php${pVer}-php-mysqlnd php${pVer}-php-common php${pVer}-php-gd php${pVer}-php-mbstring php${pVer}-php-mcrypt php${pVer}-php-devel php${pVer}-php-xml php${pVer}-php-cli php${pVer}-php-pdo php${pVer}-php-mssql mariadb mariadb-server mariadb-devel httpd httpd-devel httpd-tools curl rsync cronie"
         else
-            pkgList="php php-mysql php-common php-gd php-mbstring php-mcrypt php-devel php-xml php-cli php-pdo php-mssql mariadb mariadb-server mariadb-devel httpd httpd-devel httpd-tools curl rsync"
+            pkgList="php php-mysql php-common php-gd php-mbstring php-mcrypt php-devel php-xml php-cli php-pdo php-mssql mariadb mariadb-server mariadb-devel httpd httpd-devel httpd-tools curl rsync cronie"
         fi
 
         for package in $pkgList; do
